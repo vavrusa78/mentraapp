@@ -1,3 +1,4 @@
+// Voice Agent for MentraOS - Fixed SDK Integration
 import { AppServer, AppSession } from "@mentra/sdk";
 import dotenv from "dotenv";
 import { logger } from "./utils/logger";
