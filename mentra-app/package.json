@@ -14,7 +14,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "mentra-sdk": "file:./MentraOS",
+    "@mentra/sdk": "^2.1.28",
     "dotenv": "^16.4.5",
     "express": "^4.18.2",
     "ws": "^8.16.0"

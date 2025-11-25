@@ -1,51 +1,99 @@
-import { AppServer } from "mentra-sdk";
+import { AppServer, AppSession } from "@mentra/sdk";
 import dotenv from "dotenv";
-import { VoiceAgentSession } from "./session";
 import { logger } from "./utils/logger";
+import { ElevenLabsClient } from "./elevenlabs/client";
 
 // Load environment variables
 dotenv.config();
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const PACKAGE_NAME = process.env.MENTRAOS_PACKAGE_NAME || "com.example.voiceagent";
+const API_KEY = process.env.MENTRAOS_API_KEY;
+
+if (!API_KEY) {
+  throw new Error("MENTRAOS_API_KEY environment variable is required");
+}
 
 /**
- * Main AppServer for G1 Voice Agent
- * Handles incoming connections from G1 glasses
+ * Voice Agent Server for G1 Glasses
+ * Extends AppServer to handle voice interactions with ElevenLabs
  */
-const appServer = new AppServer({
-  // App metadata
-  name: "G1 Voice Agent",
-  description: "Voice-controlled AI assistant using ElevenLabs",
-  version: "1.0.0",
+class VoiceAgentServer extends AppServer {
+  private elevenLabsClients = new Map<string, ElevenLabsClient>();
 
-  // Required permissions
-  permissions: ["microphone"],
+  protected async onSession(
+    session: AppSession,
+    sessionId: string,
+    userId: string,
+  ): Promise<void> {
+    logger.info(`New session started: ${sessionId} for user: ${userId}`);
 
-  // Session factory - creates new session for each connection
-  sessionFactory: (appSession) => {
-    logger.info("New session created");
-    return new VoiceAgentSession(appSession);
-  },
+    // Create ElevenLabs client for this session
+    const elevenLabsClient = new ElevenLabsClient();
+    this.elevenLabsClients.set(sessionId, elevenLabsClient);
 
-  // Server configuration
+    // Show welcome message
+    await session.layouts.showTextWall("Voice Agent Ready\nSay something to start");
+
+    // Listen for transcriptions (voice input)
+    session.events.onTranscription(async (data) => {
+      logger.info(`User said: ${data.text}`);
+      
+      try {
+        // Show that we're processing
+        await session.layouts.showTextWall("Processing...\n\nPlease wait");
+
+        // Connect to ElevenLabs if not connected
+        if (!elevenLabsClient.isActive()) {
+          await elevenLabsClient.connect();
+        }
+
+        // Send transcription to ElevenLabs for a response
+        // Note: This is a simplified version - you may want to use
+        // ElevenLabs text-to-text API instead of audio streaming
+        const response = await elevenLabsClient.getTextResponse();
+
+        if (response) {
+          // Display response on glasses
+          await session.layouts.showReferenceCard("Response", response);
+        }
+      } catch (error) {
+        logger.error("Error processing transcription:", error);
+        await session.layouts.showTextWall("Error\nPlease try again");
+      }
+    });
+
+    // Listen for button presses
+    session.events.onButtonPress(async (data) => {
+      logger.info(`Button pressed: ${data.buttonId}`);
+      await session.layouts.showTextWall("Voice Agent Ready\nSay something to start");
+    });
+
+    // Note: Session cleanup happens automatically when user disconnects
+    // We clean up ElevenLabs clients when the server shuts down
+  }
+}
+
+// Create and start the server
+const server = new VoiceAgentServer({
+  packageName: PACKAGE_NAME,
+  apiKey: API_KEY,
   port: PORT,
 });
 
-// Start the server
-appServer.start().then(() => {
-  logger.info(`G1 Voice Agent server started on port ${PORT}`);
-  logger.info("Waiting for G1 glasses to connect...");
+server.start().then(() => {
+  logger.info(`Voice Agent server started on port ${PORT}`);
+  logger.info(`Package: ${PACKAGE_NAME}`);
+  logger.info("Waiting for connections from MentraOS...");
 });
 
 // Graceful shutdown
 process.on("SIGINT", async () => {
   logger.info("Shutting down server...");
-  await appServer.stop();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
   logger.info("Shutting down server...");
-  await appServer.stop();
   process.exit(0);
 });
