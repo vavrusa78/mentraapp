@@ -1,0 +1,12 @@
+# Configure Nixpacks to build Node.js app in mentra-app subdirectory
+[phases.setup]
+nixPkgs = ["nodejs_20", "git"]
+
+[phases.install]
+cmds = ["cd mentra-app && npm ci || npm install"]
+
+[phases.build]
+cmds = ["cd mentra-app && npm run build"]
+
+[start]
+cmd = "cd mentra-app && npm start"
